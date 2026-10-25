@@ -1,3 +1,7 @@
+-- GTFS Schedule schema for PostgreSQL.
+-- IDs intentionally use TEXT: GTFS IDs are identifiers, not necessarily numbers.
+-- GTFS service times remain TEXT because valid values can exceed 24:00:00.
+-- Date fields use DATE; PostgreSQL accepts GTFS YYYYMMDD date input.
 -- =========================================================
 -- CORE GTFS TABLES
 -- =========================================================
@@ -19,17 +23,17 @@ CREATE TABLE {schema}.stops (
     stop_name TEXT,
     tts_stop_name TEXT,
     stop_desc TEXT,
-    stop_lat TEXT,
-    stop_lon TEXT,
+    stop_lat DOUBLE PRECISION,
+    stop_lon DOUBLE PRECISION,
     zone_id TEXT,
     stop_url TEXT,
-    location_type TEXT,
+    location_type SMALLINT,
     parent_station TEXT,
     stop_timezone TEXT,
-    wheelchair_boarding TEXT,
+    wheelchair_boarding SMALLINT,
     level_id TEXT,
     platform_code TEXT,
-    vehicle_type TEXT
+    vehicle_type INTEGER
 );
 
 CREATE TABLE {schema}.routes (
@@ -38,43 +42,43 @@ CREATE TABLE {schema}.routes (
     route_short_name TEXT,
     route_long_name TEXT,
     route_desc TEXT,
-    route_type TEXT,
+    route_type INTEGER,
     route_url TEXT,
     route_color TEXT,
     route_text_color TEXT,
-    route_sort_order TEXT,
-    continuous_pickup TEXT,
-    continuous_drop_off TEXT,
+    route_sort_order INTEGER,
+    continuous_pickup SMALLINT,
+    continuous_drop_off SMALLINT,
     network_id TEXT,
     as_route TEXT
 );
 
 CREATE TABLE {schema}.calendar (
     service_id TEXT PRIMARY KEY,
-    monday TEXT NOT NULL,
-    tuesday TEXT NOT NULL,
-    wednesday TEXT NOT NULL,
-    thursday TEXT NOT NULL,
-    friday TEXT NOT NULL,
-    saturday TEXT NOT NULL,
-    sunday TEXT NOT NULL,
-    start_date TEXT NOT NULL,
-    end_date TEXT NOT NULL
+    monday SMALLINT NOT NULL,
+    tuesday SMALLINT NOT NULL,
+    wednesday SMALLINT NOT NULL,
+    thursday SMALLINT NOT NULL,
+    friday SMALLINT NOT NULL,
+    saturday SMALLINT NOT NULL,
+    sunday SMALLINT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL
 );
 
 CREATE TABLE {schema}.calendar_dates (
     service_id TEXT NOT NULL,
-    date TEXT NOT NULL,
-    exception_type TEXT NOT NULL,
+    date DATE NOT NULL,
+    exception_type SMALLINT NOT NULL,
     PRIMARY KEY (service_id, date)
 );
 
 CREATE TABLE {schema}.shapes (
     shape_id TEXT NOT NULL,
-    shape_pt_lat TEXT NOT NULL,
-    shape_pt_lon TEXT NOT NULL,
-    shape_pt_sequence TEXT NOT NULL,
-    shape_dist_traveled TEXT,
+    shape_pt_lat DOUBLE PRECISION NOT NULL,
+    shape_pt_lon DOUBLE PRECISION NOT NULL,
+    shape_pt_sequence INTEGER NOT NULL,
+    shape_dist_traveled DOUBLE PRECISION,
     PRIMARY KEY (shape_id, shape_pt_sequence)
 );
 
@@ -84,12 +88,12 @@ CREATE TABLE {schema}.trips (
     trip_id TEXT PRIMARY KEY,
     trip_headsign TEXT,
     trip_short_name TEXT,
-    direction_id TEXT,
+    direction_id SMALLINT,
     block_id TEXT,
     shape_id TEXT,
-    wheelchair_accessible TEXT,
-    bikes_allowed TEXT,
-    cars_allowed TEXT
+    wheelchair_accessible SMALLINT,
+    bikes_allowed SMALLINT,
+    cars_allowed SMALLINT
 );
 
 CREATE TABLE {schema}.stop_times (
@@ -99,16 +103,16 @@ CREATE TABLE {schema}.stop_times (
     stop_id TEXT NOT NULL,
     location_group_id TEXT,
     location_id TEXT,
-    stop_sequence TEXT NOT NULL,
+    stop_sequence INTEGER NOT NULL,
     stop_headsign TEXT,
     start_pickup_drop_off_window TEXT,
     end_pickup_drop_off_window TEXT,
-    pickup_type TEXT,
-    drop_off_type TEXT,
-    continuous_pickup TEXT,
-    continuous_drop_off TEXT,
-    shape_dist_traveled TEXT,
-    timepoint TEXT,
+    pickup_type SMALLINT,
+    drop_off_type SMALLINT,
+    continuous_pickup SMALLINT,
+    continuous_drop_off SMALLINT,
+    shape_dist_traveled DOUBLE PRECISION,
+    timepoint SMALLINT,
     pickup_booking_rule_id TEXT,
     drop_off_booking_rule_id TEXT,
     PRIMARY KEY (trip_id, stop_sequence)
@@ -118,8 +122,8 @@ CREATE TABLE {schema}.frequencies (
     trip_id TEXT NOT NULL,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
-    headway_secs TEXT NOT NULL,
-    exact_times TEXT,
+    headway_secs INTEGER NOT NULL,
+    exact_times SMALLINT,
     PRIMARY KEY (trip_id, start_time)
 );
 
@@ -130,8 +134,8 @@ CREATE TABLE {schema}.transfers (
     to_route_id TEXT,
     from_trip_id TEXT,
     to_trip_id TEXT,
-    transfer_type TEXT NOT NULL,
-    min_transfer_time TEXT
+    transfer_type SMALLINT NOT NULL,
+    min_transfer_time INTEGER
 );
 
 -- =========================================================
@@ -140,9 +144,9 @@ CREATE TABLE {schema}.transfers (
 
 CREATE TABLE {schema}.plans (
     agency_id TEXT NOT NULL,
-    plan_end_date TEXT NOT NULL,
+    plan_end_date DATE NOT NULL,
     plan_id TEXT PRIMARY KEY,
-    plan_start_date TEXT NOT NULL
+    plan_start_date DATE NOT NULL
 );
 
 -- =========================================================
@@ -151,7 +155,7 @@ CREATE TABLE {schema}.plans (
 
 CREATE TABLE {schema}.levels (
     level_id TEXT PRIMARY KEY,
-    level_index TEXT NOT NULL,
+    level_index DOUBLE PRECISION NOT NULL,
     level_name TEXT
 );
 
@@ -159,13 +163,13 @@ CREATE TABLE {schema}.pathways (
     pathway_id TEXT PRIMARY KEY,
     from_stop_id TEXT NOT NULL,
     to_stop_id TEXT NOT NULL,
-    pathway_mode TEXT NOT NULL,
-    is_bidirectional TEXT NOT NULL,
-    length TEXT,
-    traversal_time TEXT,
-    stair_count TEXT,
-    max_slope TEXT,
-    min_width TEXT,
+    pathway_mode SMALLINT NOT NULL,
+    is_bidirectional SMALLINT NOT NULL,
+    length DOUBLE PRECISION,
+    traversal_time INTEGER,
+    stair_count INTEGER,
+    max_slope DOUBLE PRECISION,
+    min_width DOUBLE PRECISION,
     signposted_as TEXT,
     reversed_signposted_as TEXT
 );
@@ -176,12 +180,12 @@ CREATE TABLE {schema}.pathways (
 
 CREATE TABLE {schema}.fare_attributes (
     fare_id TEXT PRIMARY KEY,
-    price TEXT NOT NULL,
+    price NUMERIC(12, 4) NOT NULL,
     currency_type TEXT NOT NULL,
-    payment_method TEXT NOT NULL,
-    transfers TEXT,
+    payment_method SMALLINT NOT NULL,
+    transfers SMALLINT,
     agency_id TEXT,
-    transfer_duration TEXT
+    transfer_duration INTEGER
 );
 
 CREATE TABLE {schema}.fare_rules (
@@ -199,7 +203,7 @@ CREATE TABLE {schema}.fare_rules (
 CREATE TABLE {schema}.rider_categories (
     rider_category_id TEXT PRIMARY KEY,
     rider_category_name TEXT,
-    is_default_fare_category TEXT,
+    is_default_fare_category SMALLINT,
     eligibility_url TEXT,
     eligibility_url_text TEXT
 );
@@ -207,16 +211,17 @@ CREATE TABLE {schema}.rider_categories (
 CREATE TABLE {schema}.fare_media (
     fare_media_id TEXT PRIMARY KEY,
     fare_media_name TEXT,
-    fare_media_type TEXT NOT NULL
+    fare_media_type SMALLINT NOT NULL
 );
 
 CREATE TABLE {schema}.fare_products (
     fare_product_id TEXT NOT NULL,
     fare_product_name TEXT,
-    fare_media_id TEXT,
-    amount TEXT NOT NULL,
+    rider_category_id TEXT NOT NULL,
+    fare_media_id TEXT NOT NULL,
+    amount NUMERIC(12, 4) NOT NULL,
     currency TEXT NOT NULL,
-    PRIMARY KEY (fare_product_id, fare_media_id)
+    PRIMARY KEY (fare_product_id, rider_category_id, fare_media_id)
 );
 
 CREATE TABLE {schema}.fare_leg_rules (
@@ -243,10 +248,10 @@ CREATE TABLE {schema}.fare_leg_join_rules (
 CREATE TABLE {schema}.fare_transfer_rules (
     from_leg_group_id TEXT,
     to_leg_group_id TEXT,
-    transfer_count TEXT,
-    duration_limit TEXT,
-    duration_limit_type TEXT,
-    fare_transfer_type TEXT NOT NULL,
+    transfer_count SMALLINT,
+    duration_limit INTEGER,
+    duration_limit_type SMALLINT,
+    fare_transfer_type SMALLINT NOT NULL,
     fare_product_id TEXT,
     from_network_id TEXT,
     to_network_id TEXT,
@@ -257,8 +262,8 @@ CREATE TABLE {schema}.fare_transfer_rules (
 
 CREATE TABLE {schema}.timeframes (
     timeframe_group_id TEXT NOT NULL,
-    start_time TEXT,
-    end_time TEXT,
+    start_time TIME,
+    end_time TIME,
     service_id TEXT NOT NULL,
     PRIMARY KEY (timeframe_group_id, service_id)
 );
@@ -307,13 +312,13 @@ CREATE TABLE {schema}.locations_geojson (
 
 CREATE TABLE {schema}.booking_rules (
     booking_rule_id TEXT PRIMARY KEY,
-    booking_type TEXT NOT NULL,
-    prior_notice_duration_min TEXT,
-    prior_notice_duration_max TEXT,
-    prior_notice_last_day TEXT,
-    prior_notice_last_time TEXT,
-    prior_notice_start_day TEXT,
-    prior_notice_start_time TEXT,
+    booking_type SMALLINT NOT NULL,
+    prior_notice_duration_min INTEGER,
+    prior_notice_duration_max INTEGER,
+    prior_notice_last_day INTEGER,
+    prior_notice_last_time TIME,
+    prior_notice_start_day INTEGER,
+    prior_notice_start_time TIME,
     prior_notice_service_id TEXT,
     message TEXT,
     pickup_message TEXT,
@@ -355,9 +360,9 @@ CREATE TABLE {schema}.attributions (
     route_id TEXT,
     trip_id TEXT,
     organization_name TEXT NOT NULL,
-    is_producer TEXT,
-    is_operator TEXT,
-    is_authority TEXT,
+    is_producer SMALLINT,
+    is_operator SMALLINT,
+    is_authority SMALLINT,
     attribution_url TEXT,
     attribution_email TEXT,
     attribution_phone TEXT
