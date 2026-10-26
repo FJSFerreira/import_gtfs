@@ -3,6 +3,9 @@ import csv
 import getpass
 import os
 import sys
+import tempfile
+import urllib.request
+import zipfile
 from pathlib import Path
 
 import psycopg
@@ -16,12 +19,17 @@ def parse_args():
     )
 
     parser.add_argument(
-        "directory",
-        type=Path,
-        help="Directory containing GTFS .txt files",
+        "source",
+        help="GTFS source: folder path, ZIP file path, or ZIP URL (depending on --source-type)",
     )
     parser.add_argument("database", help="Database name")
     parser.add_argument("schema", help="Target schema name")
+    parser.add_argument(
+        "--source-type",
+        choices=("folder", "zip", "url"),
+        default="folder",
+        help="Source type: folder (default), zip, or url (URL to a ZIP archive)",
+    )
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", type=int, default=5432)
     parser.add_argument("--user", default="postgres")
@@ -217,16 +225,75 @@ def import_table(conn, schema, file_path):
             raise
 
 
-def main():
-    args = parse_args()
+def get_gtfs_files(source_type, source, temp_dir):
+    """Prepare the source and return its GTFS .txt files."""
+    if source_type == "folder":
+        directory = Path(source)
+        if not directory.is_dir():
+            raise FileNotFoundError(f"Directory not found: {directory}")
+        files = sorted(directory.glob("*.txt"))
 
-    if not args.directory.is_dir():
-        sys.exit(f"Directory not found: {args.directory}")
+    elif source_type == "zip":
+        zip_path = Path(source)
+        if not zip_path.is_file():
+            raise FileNotFoundError(f"ZIP file not found: {zip_path}")
+        directory = Path(temp_dir) / "gtfs"
+        directory.mkdir()
+        extract_gtfs_txt_files(zip_path, directory)
+        files = sorted(directory.rglob("*.txt"))
 
-    files = sorted(args.directory.glob("*.txt"))
+    else:  # url
+        directory = Path(temp_dir) / "gtfs"
+        directory.mkdir()
+        zip_path = Path(temp_dir) / "download.zip"
+        request = urllib.request.Request(
+            source,
+            headers={"User-Agent": "GTFS-importer/1.0"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response, zip_path.open("wb") as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+        except Exception as exc:
+            raise RuntimeError(f"Could not download ZIP from URL: {exc}") from exc
+
+        extract_gtfs_txt_files(zip_path, directory)
+        files = sorted(directory.rglob("*.txt"))
 
     if not files:
-        sys.exit(f"No .txt files found in {args.directory}")
+        raise FileNotFoundError(f"No .txt files found for source: {source}")
+    return files
+
+
+def extract_gtfs_txt_files(zip_path, destination):
+    """Extract only .txt files from a ZIP, rejecting paths outside destination."""
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            root = destination.resolve()
+            txt_members = [
+                member for member in archive.infolist()
+                if not member.is_dir() and Path(member.filename).suffix.lower() == ".txt"
+            ]
+            for member in txt_members:
+                target = (destination / member.filename).resolve()
+                if not target.is_relative_to(root):
+                    raise ValueError(f"Unsafe path in ZIP archive: {member.filename}")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with archive.open(member) as source_file, target.open("wb") as target_file:
+                    while True:
+                        chunk = source_file.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        target_file.write(chunk)
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Not a valid ZIP archive: {zip_path}") from exc
+
+
+def main():
+    args = parse_args()
 
     password = os.environ.get("PGPASSWORD")
     if password is None:
@@ -241,30 +308,35 @@ def main():
     }
 
     try:
-        # 1. Create the database if necessary.
-        ensure_database(config)
+        # Prepare source inside a temporary directory; it is removed automatically.
+        with tempfile.TemporaryDirectory(prefix="gtfs_import_") as temp_dir:
+            files = get_gtfs_files(args.source_type, args.source, temp_dir)
+            print(f"Source type: {args.source_type}; found {len(files)} .txt file(s)")
 
-        # 2. Connect to the target database.
-        with psycopg.connect(**config) as conn:
-            # 3. Drop and recreate the schema, then create all tables.
-            recreate_schema(conn, args.schema)
-            create_tables(conn, args.schema)
+            # 1. Create the database if necessary.
+            ensure_database(config)
 
-            # 4. Import each GTFS file using COPY.
-            errors = 0
+            # 2. Connect to the target database.
+            with psycopg.connect(**config) as conn:
+                # 3. Drop and recreate the schema, then create all tables.
+                recreate_schema(conn, args.schema)
+                create_tables(conn, args.schema)
 
-            for file_path in files:
-                try:
-                    import_table(conn, args.schema, file_path)
-                except Exception as exc:
-                    conn.rollback()
-                    errors += 1
-                    print(f"ERROR: {file_path.name}: {exc}")
+                # 4. Import each GTFS file using COPY.
+                errors = 0
 
-        if errors:
-            sys.exit(f"Import finished with {errors} file(s) in error.")
+                for file_path in files:
+                    try:
+                        import_table(conn, args.schema, file_path)
+                    except Exception as exc:
+                        conn.rollback()
+                        errors += 1
+                        print(f"ERROR: {file_path.name}: {exc}")
 
-        print("Import completed successfully.")
+            if errors:
+                sys.exit(f"Import finished with {errors} file(s) in error.")
+
+            print("Import completed successfully.")
 
     except Exception as exc:
         sys.exit(f"Import failed: {exc}")
